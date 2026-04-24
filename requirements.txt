@@ -4,3 +4,11 @@ langchain
 langchain-google-genai
 python-dotenv
 uvicorn
+pypdf
+tiktoken
+google-generativeai
+pinecone
+celery
+redis
+gevent
+eventlet

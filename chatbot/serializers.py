@@ -11,4 +11,8 @@ class EmailSerializer(serializers.Serializer):
 
 class ChatRequestSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=1000)
-    session_id = serializers.CharField(required=True) 
+    session_id = serializers.CharField(required=True)
+
+class PDFUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    session_id = serializers.CharField()
