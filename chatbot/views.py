@@ -15,10 +15,10 @@ from .rag.ingestion import process_pdf
 from chatbot.rag.embedding import embed_texts
 from chatbot.rag.vector_store import index
 from django.core.files.storage import FileSystemStorage
-from .tasks import process_pdf_task
 import tempfile
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 # Compact, production-oriented system prompt (single source)
 SYSTEM_PROMPT = (
@@ -195,23 +195,36 @@ class PDFUploadAPIView(APIView):
         file = serializer.validated_data["file"]
         session_id = serializer.validated_data["session_id"]
 
-        try:
-            # Create a temporary local file so the Celery worker can access it
-            fs = FileSystemStorage(location=tempfile.gettempdir())
-            filename = fs.save(file.name, file)
-            file_path = fs.path(filename)
+        logger.info(f"Processing PDF upload for session: {session_id}")
 
-            # Fire and forget the heavy PDF processing via Celery
-            task = process_pdf_task.delay(file_path, session_id)
+        try:
+            # Synchronous processing pipeline
+            num_chunks = process_pdf(file, session_id)
+            logger.info(f"Successfully processed {num_chunks} chunks for session: {session_id}")
+
+            # Clear session history on new document
+            try:
+                # instantiate chat view directly to borrow session lookup method
+                chat_view = ChatView()
+                session_obj, session_data = chat_view.get_session_by_custom_id(session_id)
+                if session_obj and session_data:
+                    chat_history_key = f'chat_history_{session_id}'
+                    if chat_history_key in session_data:
+                        session_data[chat_history_key] = []
+                        session_obj.session_data = Session.objects.encode(session_data)
+                        session_obj.save()
+                        logger.info(f"Cleared previous chat history for session: {session_id}")
+            except Exception as e:
+                logger.warning(f"Error clearing chat history (non-fatal): {str(e)}")
 
             return Response({
-                "message": "Document uploaded and processing started in background.",
-                "task_id": task.id
-            }, status=status.HTTP_202_ACCEPTED)
+                "message": "Document processed and indexed successfully."
+            }, status=status.HTTP_200_OK)
 
         except Exception as e:
+            logger.error(f"Failed to process PDF for session {session_id}: {str(e)}", exc_info=True)
             return Response({
-                "error": str(e)
+                "error": "An error occurred while processing the document. Please try again."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 

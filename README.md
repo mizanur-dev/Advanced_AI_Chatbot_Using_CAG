@@ -1,51 +1,128 @@
-# AI Chatbot (REST)
+# Advanced AI RAG Chatbot (Django REST Framework)
 
-Simple AI chatbot using Django REST Framework and Gemini via LangChain. The bot uses a single, global system prompt and validates users via an email-based session flow.
+An enterprise-grade, fully functional Retrieval-Augmented Generation (RAG) AI Chatbot built with Django REST Framework, Google Gemini AI, and Pinecone Vector Database.
 
-## Features
+This application allows users to upload PDF documents, extract text securely, convert it into semantically meaningful chunks, and chat interactively with the document content using advanced AI architecture.
 
-- Single system prompt for consistent behavior.
-- Email-based session validation (no login).
-- Simple REST endpoints for easy integration.
+## 🚀 Key Features
 
-## Endpoints
+*   **Advanced Semantic Chunking:** Moves beyond trivial fixed-size character chunking. Uses `langchain_experimental`'s `SemanticChunker` and Gemini embeddings to intelligently group sentences together mathematically by topic and meaning, improving search accuracy.
+*   **Vector Database (Pinecone):** Efficiently indexes and retrieves document embeddings. Auto-batches vectors (100 at a time) to comfortably handle large PDF uploads without encountering payload limits.
+*   **Google Gemini AI:** Fully utilizes `gemini-2.5-flash` for high-speed, high-accuracy conversational responses, and `models/gemini-embedding-001` for deep text representation.
+*   **Dynamic Session Memory:** Keeps track of conversational history (up to 20 turns) to understand follow-up questions intelligently.
+*   **Synchronous Production Flow:** No complex Celery/Redis dependencies required—processes everything efficiently right out of the box in standard HTTP threads.
+*   **Dynamic Namespaces:** Organizes vector data securely. Every user gets a unique `session_id` acting as a secure "namespace" inside Pinecone. When you upload a new document, it automatically wipes your old namespace clean to prevent cross-document confusion.
 
-- `POST /api/set_email/`
-  - Body: `{ "email": "user@example.com" }`
-  - Returns: `{ "message": "...", "session_id": "<email_xxxxxx>" }`
+## 🛠️ Technology Stack
 
-- `POST /api/chat/`
-  - Body: `{ "message": "Hello", "session_id": "<from set_email>" }`
-  - Returns: `{ "response": "..." }`
+*   **Backend:** Python 3.11, Django, Django REST Framework (DRF)
+*   **AI/LLM Framework:** Langchain, Langchain Experimental, Google Generative AI
+*   **Vector Store:** Pinecone
+*   **File Parsing:** PyPDF
 
-## System Prompt
+---
 
-Defined once in `chatbot/views.py` as `SYSTEM_PROMPT`. Update it there to change the assistant persona.
+## ⚙️ Setup and Installation
 
-## Setup
+### 1. Environment Setup
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate    # PowerShell on Windows
+Create a virtual environment and install the dependencies:
+
+```powershell
+# Create Virtual Environment
+python -m venv venv
+
+# Activate it (Windows PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# Install required packages
 pip install -r requirements.txt
+```
 
-# Add your Gemini API key to .env
-echo GEMINI_API_KEY=your_key_here > .env
+### 2. Environment Variables (`.env`)
 
+Create a `.env` file in the root of the directory (same level as `manage.py`) with your API keys:
+
+```env
+SECRET_KEY=your_django_secret_key_here
+DEBUG=True
+ALLOWED_HOSTS=*
+
+# AI & Vector DB Credentials
+GEMINI_API_KEY=your_google_gemini_api_key_here
+PINECONE_API_KEY=your_pinecone_api_key_here
+PINECONE_INDEX=advanced-ai-chatbot-using-cag
+```
+
+### 3. Database Migration & Running the Server
+
+Initialize the local SQLite tracking database (handles session metadata) and boot up!
+
+```powershell
 python manage.py migrate
 python manage.py runserver
 ```
 
-## Quick Try (PowerShell)
+---
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/set_email/ -H "Content-Type: application/json" -d '{"email":"me@example.com"}'
-# Copy session_id from the response
+## 📖 API Documentation & Workflow
 
-curl -X POST http://127.0.0.1:8000/api/chat/ -H "Content-Type: application/json" -d '{"message":"Hi!","session_id":"<paste>"}'
+The architecture uses a 3-step workflow: Authenticate ➔ Upload Document ➔ Chat.
+
+### Step 1: Initialize User Session
+**Endpoint:** `POST /api/set_email/`
+
+Instead of a heavy authentication system, the API uses a lightweight email-based session initializer.
+
+**Request:**
+```json
+{
+    "email": "user@example.com"
+}
 ```
 
-## Notes
+**Response:**
+```json
+{
+    "message": "Email set successfully: user@example.com. You can now use the chatbot.",
+    "session_id": "user@example.com_a1b2c3d4"
+}
+```
+*(Save this `session_id`. You will use it for all subsequent requests to isolate your documents and chat history.)*
 
-- Ensure `.env` contains `GEMINI_API_KEY`.
-- Authentication is disabled on these endpoints for simplicity; email + `session_id` gates access.
+### Step 2: Upload Document (PDF)
+**Endpoint:** `POST /api/upload_pdf/`
+
+Uploads the PDF, parses the text, calculates semantic chunks, generates embeddings, and batch-upserts them directly into Pinecone using your `session_id` as the secure internal namespace.
+
+**Request:** 
+*   **Format:** `multipart/form-data`
+*   `file`: (Your PDF File)
+*   `session_id`: `user@example.com_a1b2c3d4`
+
+**Response:**
+```json
+{
+    "message": "Document processed and indexed successfully."
+}
+```
+
+### Step 3: Chat with the AI!
+**Endpoint:** `POST /api/chat/`
+
+Queries the AI. It will dynamically search Pinecone for the most relevant semantic chunks from your uploaded document, inject them into the system prompt alongside your recent chat history, and generate an intelligent response based *strictly* on the provided context.
+
+**Request:**
+```json
+{
+    "message": "What is the main topic of the document?",
+    "session_id": "user@example.com_a1b2c3d4"
+}
+```
+
+**Response:**
+```json
+{
+    "response": "The main topic of the document is..."
+}
+```
